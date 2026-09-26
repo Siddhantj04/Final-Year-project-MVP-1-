@@ -1,0 +1,66 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-radiologylearn}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change_me_strong_password}
+      POSTGRES_DB: ${POSTGRES_DB:-radiologylearn}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-radiologylearn} -d ${POSTGRES_DB:-radiologylearn}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - radiology_net
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-radiologylearn}:${POSTGRES_PASSWORD:-change_me_strong_password}@db:5432/${POSTGRES_DB:-radiologylearn}
+      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:3000}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+      ENVIRONMENT: ${ENVIRONMENT:-production}
+      MODEL_CHECKPOINT_PATH: ${MODEL_CHECKPOINT_PATH:-/app/models/best_model.pt}
+      METRICS_JSON_PATH: ${METRICS_JSON_PATH:-/app/models/metrics.json}
+    volumes:
+      - upload_data:/app/uploads
+      - model_data:/app/models
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - radiology_net
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${BACKEND_PUBLIC_URL:-http://localhost:8000}
+    env_file:
+      - .env
+    environment:
+      NEXT_PUBLIC_API_URL: ${BACKEND_PUBLIC_URL:-http://localhost:8000}
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    networks:
+      - radiology_net
+
+volumes:
+  postgres_data:
+  upload_data:
+  model_data:
+
+networks:
+  radiology_net:
+    driver: bridge
